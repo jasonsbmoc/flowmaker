@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flowmaker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #e8e4de;
+      height: 100vh;
+      display: flex;
+      flex-direction: row;
+      font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    #sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      background: #f2efe9;
+      border-right: 1px solid #ddd8d0;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 16px 16px;
+      gap: 0;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    #sidebar::-webkit-scrollbar { display: none; }
+
+    /* ── Canvas ──────────────────────────────────────────── */
+    #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+    #canvas { position: absolute; top: 0; left: 0; }
+
+    /* ── Section labels ──────────────────────────────────── */
+    .section-label {
+      font-size: 8.5px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #aaa49b;
+      margin-bottom: 10px;
+      margin-top: 20px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    /* ── Row: label + value ──────────────────────────────── */
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .lbl {
+      font-size: 11px;
+      font-weight: 450;
+      color: #6b6660;
+      white-space: nowrap;
+    }
+    .vdisp {
+      font-size: 10px;
+      color: #aaa49b;
+      font-family: monospace;
+      min-width: 30px;
+      text-align: right;
+    }
+
+    /* ── Sliders ─────────────────────────────────────────── */
+    input[type="range"] {
+      width: 100%;
+      appearance: none;
+      height: 2px;
+      background: #d9d4cc;
+      outline: none;
+      cursor: pointer;
+      margin-bottom: 14px;
+      display: block;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #888078;
+      cursor: pointer;
+      transition: background .1s, transform .1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #3a3530;
+      transform: scale(1.2);
+    }
+
+    /* ── Color swatches ──────────────────────────────────── */
+    .color-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .color-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      flex: 1;
+    }
+    .color-item .lbl { font-size: 10px; }
+    input[type="color"] {
+      width: 100%;
+      height: 28px;
+      border: 1px solid #d0cbc3;
+      border-radius: 5px;
+      padding: 2px 3px;
+      cursor: pointer;
+      background: none;
+    }
+
+    /* ── Angle picker ────────────────────────────────────── */
+    .angle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    #angle-pick {
+      width: 44px; height: 44px; flex-shrink: 0;
+      cursor: crosshair; user-select: none; -webkit-user-select: none;
+    }
+    #vd-angle {
+      font-size: 11px;
+      color: #aaa49b;
+      font-family: monospace;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: auto;
+      padding-top: 20px;
+    }
+    .abtn {
+      flex: 1;
+      background: none;
+      border: 1px solid #d0cbc3;
+      color: #6b6660;
+      height: 34px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .abtn:hover { background: #e8e3db; border-color: #bfb9b1; color: #2a2520; }
+    #btn-play.on {
+      background: #2a2520;
+      border-color: #2a2520;
+      color: #f2efe9;
+    }
+    #btn-play.on:hover { background: #3a3530; }
+
+    .toggle-pill {
+      background: none; border: 1px solid #d0cbc3; color: #aaa49b;
+      padding: 3px 10px; border-radius: 20px; font-size: 10px;
+      cursor: pointer; font-family: inherit; font-weight: 500;
+      letter-spacing: 0.04em; transition: all .12s;
+    }
+    .toggle-pill:hover { border-color: #bfb9b1; color: #6b6660; }
+    .toggle-pill.on {
+      background: #2a2520; border-color: #2a2520; color: #f2efe9;
+    }
+
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+
+  <div class="section-label">Color</div>
+  <div class="color-row">
+    <div class="color-item">
+      <span class="lbl">Ink</span>
+      <input type="color" id="col-ink" value="#6b8c42">
+    </div>
+    <div class="color-item">
+      <span class="lbl">Paper</span>
+      <input type="color" id="col-paper" value="#f0ece2">
+    </div>
+  </div>
+
+  <div class="section-label">Stroke</div>
+
+  <div class="row">
+    <span class="lbl">Frequency</span>
+    <span class="vdisp" id="vd-frequency">5</span>
+  </div>
+  <input type="range" id="sl-frequency" min="1" max="10" value="5" step="1">
+
+  <div class="row">
+    <span class="lbl">Intensity</span>
+    <span class="vdisp" id="vd-intensity">5</span>
+  </div>
+  <input type="range" id="sl-intensity" min="1" max="10" value="5" step="1">
+
+  <div class="row">
+    <span class="lbl">Length</span>
+    <span class="vdisp" id="vd-length">6</span>
+  </div>
+  <input type="range" id="sl-length" min="1" max="10" value="6" step="1">
+
+  <div class="row">
+    <span class="lbl">Smear</span>
+    <span class="vdisp" id="vd-smear">6</span>
+  </div>
+  <input type="range" id="sl-smear" min="1" max="10" value="6" step="1">
+
+  <div class="row">
+    <span class="lbl">Softness</span>
+    <span class="vdisp" id="vd-soft">5</span>
+  </div>
+  <input type="range" id="sl-soft" min="1" max="10" value="5" step="1">
+
+  <div class="row">
+    <span class="lbl">Tone Variance</span>
+    <span class="vdisp" id="vd-tone-variance">1</span>
+  </div>
+  <input type="range" id="sl-tone-variance" min="1" max="10" value="1" step="1">
+
+  <div class="row">
+    <span class="lbl">Edge Texture</span>
+    <span class="vdisp" id="vd-edge-rough">3</span>
+  </div>
+  <input type="range" id="sl-edge-rough" min="0" max="10" value="3" step="1">
+
+  <div class="section-label">Direction</div>
+
+  <div class="row">
+    <span class="lbl">Angle</span>
+  </div>
+  <div class="angle-row">
+    <div id="angle-pick">
+      <svg id="angle-svg" width="44" height="44" viewBox="0 0 44 44">
+        <circle cx="22" cy="22" r="17" fill="none" stroke="#d0cbc3" stroke-width="1.5"/>
+        <circle cx="22" cy="22" r="2" fill="#bfb9b1"/>
+        <line id="ang-line" x1="22" y1="22" x2="39" y2="22"
+              stroke="#888078" stroke-width="1.5" stroke-linecap="round"/>
+        <circle id="ang-dot" cx="39" cy="22" r="4" fill="#888078"/>
+      </svg>
+    </div>
+    <span id="vd-angle">45°</span>
+  </div>
+
+  <div class="row">
+    <span class="lbl">Turbulence</span>
+    <span class="vdisp" id="vd-turbulence">2</span>
+  </div>
+  <input type="range" id="sl-turbulence" min="0" max="10" value="2" step="1">
+
+  <div class="section-label">Motion</div>
+
+  <div class="row">
+    <span class="lbl">Speed</span>
+    <span class="vdisp" id="vd-speed">3</span>
+  </div>
+  <input type="range" id="sl-speed" min="1" max="10" value="3" step="1">
+
+  <div class="section-label">Random</div>
+
+  <div class="row">
+    <span class="lbl">Seed</span>
+    <span class="vdisp" id="vd-seed">42</span>
+  </div>
+  <input type="range" id="sl-seed" min="0" max="999" value="42" step="1">
+
+  <div class="section-label">Grain</div>
+
+  <div class="row" style="margin-bottom:10px">
+    <span class="lbl">Grain</span>
+    <button id="btn-grain" class="toggle-pill on">On</button>
+  </div>
+
+  <div class="row">
+    <span class="lbl">Amount</span>
+    <span class="vdisp" id="vd-grain">2</span>
+  </div>
+  <input type="range" id="sl-grain" min="1" max="10" value="2" step="1">
+
+  <div class="row">
+    <span class="lbl">Grain Speed</span>
+    <span class="vdisp" id="vd-grain-speed">6</span>
+  </div>
+  <input type="range" id="sl-grain-speed" min="1" max="10" value="6" step="1">
+
+  <div class="btn-row">
+    <button id="btn-play" class="abtn on" title="Play / Pause">⏸</button>
+    <button id="btn-export" class="abtn" title="Save PNG" style="font-size:15px">↓</button>
+  </div>
+
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+'use strict';
+
+// ─── PRNG (mulberry32) ────────────────────────────────────────────────────────
+function mkRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function norm(v, lo, hi) { return (v - lo) / (hi - lo); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function hexRgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function hexToHsl(hex) {
+  let [r, g, b] = hexRgb(hex).map(v => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [h, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue = (t) => {
+    t = ((t % 1) + 1) % 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  return [Math.round(hue(h + 1/3) * 255),
+          Math.round(hue(h)       * 255),
+          Math.round(hue(h - 1/3) * 255)];
+}
+
+// Returns array of [r,g,b] (0-255) tone steps centered on ink color.
+// variance=1 → 1 entry (base). Each extra 2 units adds ±1 step of 10% L.
+// Clamped to L 4%–96% so we never reach pure white or black.
+function computeTonePalette() {
+  const [h, s, l] = hexToHsl(cfg.ink);
+  const nSteps = Math.round((cfg.toneVariance - 1) / 2);  // 0..5
+  const palette = [];
+  for (let i = -nSteps; i <= nSteps; i++) {
+    palette.push(hslToRgb(h, s, Math.max(0.04, Math.min(0.96, l + i * 0.10))));
+  }
+  return palette;
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+const cfg = {
+  playing:    true,
+  ink:        '#6b8c42',
+  paper:      '#f0ece2',
+  density:    5,
+  length:     6,
+  smear:      6,
+  soft:       5,
+  angle:      Math.PI / 4,
+  turbulence: 2,
+  frequency:  5,   // how many strokes cover the canvas
+  intensity:  5,   // how opaque/heavy each stroke is
+  speed:      3,
+  seed:       42,
+  toneVariance: 1,
+  edgeRough:    3,
+  grain:      true,
+  grainAmt:   2,
+  grainSpeed: 6,
+};
+
+// ─── WebGL ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl', {
+  alpha: false,
+  premultipliedAlpha: false,
+  preserveDrawingBuffer: true,   // needed for reliable PNG export
+  antialias: false,
+});
+
+if (!gl) { alert('WebGL not available'); throw new Error(); }
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+
+// Each blob quad: position rotated in JS, UV from unit quad, per-vertex alpha + color.
+const VS = `
+  attribute vec2  aPos;
+  attribute vec2  aUv;
+  attribute float aAlpha;
+  attribute vec3  aColor;
+  varying vec2  vUv;
+  varying float vAlpha;
+  varying vec3  vColor;
+  uniform vec2 uRes;
+  void main() {
+    vec2 clip = (aPos / uRes) * 2.0 - 1.0;
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+    vUv    = aUv;
+    vAlpha = aAlpha;
+    vColor = aColor;
+  }
+`;
+
+// Two-layer gaussian: soft halo + sharper pigment core — both baked into one pass.
+const FS = `
+  precision mediump float;
+  varying vec2  vUv;
+  varying float vAlpha;
+  varying vec3  vColor;
+  uniform float uSoftness;
+  uniform float uEdgeRough;
+
+  float hash1(float n) {
+    return fract(sin(n) * 43758.5453);
+  }
+
+  float edgeWarp(vec2 p) {
+    float angle = atan(p.y, p.x);
+    float n  = hash1(angle * 1.9 + 0.3);
+    n += 0.50 * hash1(angle * 4.1 + 1.7);
+    n += 0.25 * hash1(angle * 8.3 + 3.2);
+    n /= 1.75;
+    return (n - 0.5) * uEdgeRough;
+  }
+
+  void main() {
+    vec2  p = vUv * 2.0 - 1.0;
+    float r = length(p);
+
+    float warp = edgeWarp(p) * smoothstep(0.25, 1.0, r);
+    float d = r + warp;
+
+    if (d >= 1.0) discard;
+
+    float coreExp = mix(5.0, 0.45, uSoftness);
+    float core    = pow(1.0 - d, coreExp) * 0.80;
+    float halo    = pow(1.0 - d, 0.32) * 0.20;
+
+    gl_FragColor  = vec4(vColor, clamp(vAlpha * (core + halo), 0.0, 1.0));
+  }
+`;
+
+const prog = gl.createProgram();
+gl.attachShader(prog, mkShader(gl.VERTEX_SHADER,   VS));
+gl.attachShader(prog, mkShader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+  throw new Error(gl.getProgramInfoLog(prog));
+
+const loc = {
+  aPos:       gl.getAttribLocation(prog,  'aPos'),
+  aUv:        gl.getAttribLocation(prog,  'aUv'),
+  aAlpha:     gl.getAttribLocation(prog,  'aAlpha'),
+  aColor:     gl.getAttribLocation(prog,  'aColor'),
+  uRes:       gl.getUniformLocation(prog, 'uRes'),
+  uSoft:      gl.getUniformLocation(prog, 'uSoftness'),
+  uEdgeRough: gl.getUniformLocation(prog, 'uEdgeRough'),
+};
+
+// ─── Grain shader program ─────────────────────────────────────────────────────
+const GRAIN_VS = `
+  attribute vec2 aPos;
+  void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+// Hash-based film grain. uTime advances each frame → new pattern every frame.
+// Grain alternates light/dark around neutral so it's unbiased on any background.
+const GRAIN_FS = `
+  precision mediump float;
+  uniform float uTime;
+  uniform float uStrength;
+  // 3-input hash: xy = screen position, z = time frame
+  // Time enters as a completely separate axis so the pattern
+  // re-randomises in place each frame with no directional shift.
+  float hash(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+  }
+  void main() {
+    float g = hash(vec3(gl_FragCoord.xy, floor(uTime)));
+    float brightness = step(0.5, g);
+    float alpha = abs(g - 0.5) * 2.0 * uStrength;
+    gl_FragColor = vec4(vec3(brightness), alpha);
+  }
+`;
+
+const grainProg = gl.createProgram();
+gl.attachShader(grainProg, mkShader(gl.VERTEX_SHADER,   GRAIN_VS));
+gl.attachShader(grainProg, mkShader(gl.FRAGMENT_SHADER, GRAIN_FS));
+gl.linkProgram(grainProg);
+if (!gl.getProgramParameter(grainProg, gl.LINK_STATUS))
+  throw new Error(gl.getProgramInfoLog(grainProg));
+
+const grainLoc = {
+  aPos:      gl.getAttribLocation(grainProg,  'aPos'),
+  uTime:     gl.getUniformLocation(grainProg, 'uTime'),
+  uStrength: gl.getUniformLocation(grainProg, 'uStrength'),
+};
+
+// Fullscreen quad in clip space — static, upload once
+const grainVbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, grainVbo);
+gl.bufferData(gl.ARRAY_BUFFER,
+  new Float32Array([-1,-1, 1,-1, 1,1, -1,1]), gl.STATIC_DRAW);
+
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+// ─── Vertex buffer ────────────────────────────────────────────────────────────
+// Layout per vertex (interleaved): x y u v alpha r g b  (8 × float32)
+// Each blob quad = 4 vertices = 32 floats, 6 indices.
+const MAX_BLOBS     = 8000;
+const F_PER_V       = 8;
+const V_PER_Q       = 4;
+const STRIDE_BYTES  = F_PER_V * 4;
+
+const vertBuf   = new Float32Array(MAX_BLOBS * V_PER_Q * F_PER_V);
+const indexBuf  = new Uint16Array(MAX_BLOBS * 6);
+
+// Index buffer is static — fill once
+for (let i = 0; i < MAX_BLOBS; i++) {
+  const b = i * 4;
+  indexBuf[i*6+0]=b; indexBuf[i*6+1]=b+1; indexBuf[i*6+2]=b+2;
+  indexBuf[i*6+3]=b; indexBuf[i*6+4]=b+2; indexBuf[i*6+5]=b+3;
+}
+
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, vertBuf, gl.DYNAMIC_DRAW);
+
+const ibo = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBuf, gl.STATIC_DRAW);
+
+// Attrib pointers are set in drawFrame after binding the correct VBO.
+
+// ─── Derived render params (recomputed on rebuild) ────────────────────────────
+let W = 1, H = 1;
+let blobR, blobLong, halfLen, softness, turbAmt, strokeCount;
+
+// Flow-space geometry — recomputed when params or angle changes
+let flowAxisLen, perpAxisLen, flowPeriod, flowMargin, centerAlong, centerPerp;
+
+function computeParams() {
+  const sc  = Math.min(W, H) / 900;
+  const ts  = norm(cfg.soft, 1, 10);
+  blobR     = lerp(5, 200, ts * ts) * sc;
+  softness  = lerp(0.0, 1.0, ts);
+  const tsm = norm(cfg.smear, 1, 10);
+  blobLong  = blobR * lerp(1.0, 9.5, tsm);
+  const tl  = norm(cfg.length, 1, 10);
+  halfLen   = blobR * lerp(1.5, 30.0, tl);
+  turbAmt   = norm(cfg.turbulence, 0, 10);
+  // Frequency: stroke count only — no alpha coupling
+  const tf    = norm(cfg.frequency, 1, 10);
+  strokeCount = Math.round(lerp(3, 90, tf * tf));
+  // baseAlpha is not set here — computed live each frame from cfg.intensity
+  computeFlowGeometry();
+}
+
+// Compute the canvas extents in flow-space so strokes tile seamlessly.
+// Called whenever angle or stroke size changes.
+function computeFlowGeometry() {
+  const ca = Math.abs(Math.cos(cfg.angle));
+  const sa = Math.abs(Math.sin(cfg.angle));
+  // Canvas extent projected onto flow direction and its perpendicular
+  flowAxisLen = W * ca + H * sa;
+  perpAxisLen = W * sa + H * ca;
+  // Centre of canvas in flow-space coordinates
+  centerAlong =  W / 2 * Math.cos(cfg.angle) + H / 2 * Math.sin(cfg.angle);
+  centerPerp  = -W / 2 * Math.sin(cfg.angle) + H / 2 * Math.cos(cfg.angle);
+  // One full period = canvas length + margin on both sides so stroke is fully
+  // off-screen at entry and exit
+  flowMargin = (halfLen + blobR) * 1.6;
+  flowPeriod = flowAxisLen + 2 * flowMargin;
+}
+
+// ─── Stroke particle ──────────────────────────────────────────────────────────
+// Each stroke is described in flow-space coordinates:
+//   laneParam (0–1): fixed perpendicular position, never changes
+//   progress  (px):  distance traveled along flow axis, wraps at flowPeriod
+//
+// World position is derived each frame from these two values plus cfg.angle,
+// so changing the angle dial just shifts where strokes appear — no respawn needed.
+//
+// Because progress wraps deterministically, strokes tile like a conveyor belt:
+// at any moment they're uniformly distributed across the canvas in the flow direction.
+
+function computeBlobOffsets(warpPhase) {
+  const stepDist = blobR * 0.65;
+  const nSteps   = clamp(Math.round(halfLen * 2 / stepDist), 2, 60);
+  const offsets  = [];
+
+  for (let i = 0; i <= nSteps; i++) {
+    const t        = i / nSteps;
+    const along    = (t - 0.5) * halfLen * 2;
+    const envelope = Math.sin(t * Math.PI);
+    const perp     = Math.sin(t * Math.PI * 3 + warpPhase) * blobR * turbAmt * 6.0 * envelope;
+
+    let localAngleDelta = 0;
+    if (turbAmt > 0.01) {
+      const dt   = 1 / nSteps;
+      const env2 = Math.sin((t + dt) * Math.PI);
+      const p2   = Math.sin((t + dt) * Math.PI * 3 + warpPhase) * blobR * turbAmt * 6.0 * env2;
+      localAngleDelta = Math.atan2(-(p2 - perp), halfLen * 2 * dt) * 0.55;
+    }
+
+    offsets.push({ along, perp, localAngleDelta, alphaFactor: Math.pow(envelope, 0.4) });
+  }
+  return offsets;
+}
+
+class Stroke {
+  constructor(rng, initial) {
+    this.sVar      = lerp(0.70, 1.30, rng());
+    this.aVar      = lerp(0.45, 1.00, rng());
+    this.warpPhase = rng() * Math.PI * 2;
+    this.blobs     = computeBlobOffsets(this.warpPhase);
+
+    // Fixed perpendicular lane — 0..1 mapped to the full perp axis extent.
+    // Stored as a 0–1 param so it stays meaningful when angle changes.
+    this.laneParam = rng();
+    // 0–1: maps to a tone in the palette; fixed per stroke so it doesn't flicker
+    this.toneParam = rng();
+
+    // Progress along the flow axis.
+    // Initial: spread randomly across the full period so canvas looks full at frame 0.
+    // Subsequent: start at 0 (entry edge) — but since we wrap, not respawn, this path
+    // is never actually taken; progress just wraps naturally.
+    this.progress = initial ? rng() * flowPeriod : 0;
+  }
+
+  // Current world-space centre, computed live from flow-space coords + current angle.
+  get cx() {
+    const along = centerAlong - flowAxisLen / 2 - flowMargin + this.progress;
+    const lane  = centerPerp  + (this.laneParam - 0.5) * perpAxisLen * 1.05;
+    return along * Math.cos(cfg.angle) - lane * Math.sin(cfg.angle);
+  }
+  get cy() {
+    const along = centerAlong - flowAxisLen / 2 - flowMargin + this.progress;
+    const lane  = centerPerp  + (this.laneParam - 0.5) * perpAxisLen * 1.05;
+    return along * Math.sin(cfg.angle) + lane * Math.cos(cfg.angle);
+  }
+
+  advance(px) {
+    this.progress = (this.progress + px) % flowPeriod;
+  }
+
+  writeQuads(blobIndex, palette) {
+    const ca   = Math.cos(cfg.angle);
+    const sa   = Math.sin(cfg.angle);
+    const rx   = blobLong * this.sVar;
+    const ry   = blobR    * this.sVar;
+    const ti   = norm(cfg.intensity, 1, 10);
+    const alph = lerp(0.06, 0.95, ti * ti) * this.aVar;
+    const scx  = this.cx;
+    const scy  = this.cy;
+
+    // Pick tone from palette using this stroke's fixed toneParam
+    const pidx   = Math.min(palette.length - 1, Math.floor(this.toneParam * palette.length));
+    const [cr, cg, cb] = palette[pidx];
+    const rf = cr / 255, gf = cg / 255, bf = cb / 255;
+
+    let qi = 0;
+
+    for (const b of this.blobs) {
+      if (b.alphaFactor < 0.015) continue;
+      if (blobIndex + qi >= MAX_BLOBS) break;
+
+      const wx = scx + ca * b.along - sa * b.perp;
+      const wy = scy + sa * b.along + ca * b.perp;
+      const wa = cfg.angle + b.localAngleDelta;
+      const a  = alph * b.alphaFactor;
+      const cw = Math.cos(wa), sw = Math.sin(wa);
+
+      const CX = [-rx,  rx,  rx, -rx];
+      const CY = [-ry, -ry,  ry,  ry];
+      const CU = [  0,   1,   1,   0];
+      const CV = [  0,   0,   1,   1];
+
+      const base = (blobIndex + qi) * V_PER_Q * F_PER_V;
+      for (let c = 0; c < 4; c++) {
+        const i = base + c * F_PER_V;
+        vertBuf[i + 0] = wx + CX[c] * cw - CY[c] * sw;
+        vertBuf[i + 1] = wy + CX[c] * sw + CY[c] * cw;
+        vertBuf[i + 2] = CU[c];
+        vertBuf[i + 3] = CV[c];
+        vertBuf[i + 4] = a;
+        vertBuf[i + 5] = rf;
+        vertBuf[i + 6] = gf;
+        vertBuf[i + 7] = bf;
+      }
+      qi++;
+    }
+    return qi;
+  }
+}
+
+// ─── Stroke pool ──────────────────────────────────────────────────────────────
+let strokes = [];
+
+function rebuildStrokes() {
+  computeParams();
+  const rng = mkRng(cfg.seed * 9301 + 49297);
+  strokes = [];
+  for (let i = 0; i < strokeCount; i++) {
+    strokes.push(new Stroke(rng, /*initial=*/true));
+  }
+}
+
+
+// ─── Frame render ─────────────────────────────────────────────────────────────
+function drawFrame() {
+  const [pr, pg, pb] = hexRgb(cfg.paper);
+  gl.clearColor(pr/255, pg/255, pb/255, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // ── Main stroke pass ──────────────────────────────────────────────────────
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.enableVertexAttribArray(loc.aPos);
+  gl.enableVertexAttribArray(loc.aUv);
+  gl.enableVertexAttribArray(loc.aAlpha);
+  gl.enableVertexAttribArray(loc.aColor);
+  // layout: x y | u v | alpha | r g b
+  gl.vertexAttribPointer(loc.aPos,   2, gl.FLOAT, false, STRIDE_BYTES, 0);
+  gl.vertexAttribPointer(loc.aUv,    2, gl.FLOAT, false, STRIDE_BYTES, 2*4);
+  gl.vertexAttribPointer(loc.aAlpha, 1, gl.FLOAT, false, STRIDE_BYTES, 4*4);
+  gl.vertexAttribPointer(loc.aColor, 3, gl.FLOAT, false, STRIDE_BYTES, 5*4);
+
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.uniform2f(loc.uRes,       W, H);
+  gl.uniform1f(loc.uSoft,      softness);
+  gl.uniform1f(loc.uEdgeRough, lerp(0.0, 0.55, norm(cfg.edgeRough, 0, 10)));
+
+  const palette    = computeTonePalette();
+  let totalBlobs   = 0;
+  for (const s of strokes) {
+    totalBlobs += s.writeQuads(totalBlobs, palette);
+    if (totalBlobs >= MAX_BLOBS) break;
+  }
+  if (totalBlobs > 0) {
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0,
+      vertBuf.subarray(0, totalBlobs * V_PER_Q * F_PER_V));
+    gl.drawElements(gl.TRIANGLES, totalBlobs * 6, gl.UNSIGNED_SHORT, 0);
+  }
+
+  // ── Grain overlay pass ────────────────────────────────────────────────────
+  if (cfg.grain) {
+    gl.useProgram(grainProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, grainVbo);
+    gl.disableVertexAttribArray(loc.aUv);
+    gl.disableVertexAttribArray(loc.aAlpha);
+    gl.disableVertexAttribArray(loc.aColor);
+    gl.enableVertexAttribArray(grainLoc.aPos);
+    gl.vertexAttribPointer(grainLoc.aPos, 2, gl.FLOAT, false, 8, 0);
+    // strength: 1→0.04, 10→0.32 — kept subtle
+    const strength = lerp(0.04, 0.32, norm(cfg.grainAmt, 1, 10));
+    // grainSpeed 1→slow (divisor 200), 10→fast (divisor 16)
+    const grainDiv = lerp(200, 16, norm(cfg.grainSpeed, 1, 10));
+    gl.uniform1f(grainLoc.uTime,     performance.now() / grainDiv);
+    gl.uniform1f(grainLoc.uStrength, strength);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+  }
+}
+
+// ─── Animation loop ───────────────────────────────────────────────────────────
+let rafId = null;
+
+function tick() {
+  const pxPerFrame = Math.pow(10, lerp(-0.52, 0.92, norm(cfg.speed, 1, 10)));
+  for (const s of strokes) s.advance(pxPerFrame);
+  drawFrame();
+  if (cfg.playing) rafId = requestAnimationFrame(tick);
+}
+
+function play() {
+  if (rafId) cancelAnimationFrame(rafId);
+  cfg.playing = true;
+  tick();
+}
+
+function pause() {
+  cfg.playing = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+}
+
+// ─── Resize ───────────────────────────────────────────────────────────────────
+const wrap = document.getElementById('canvas-wrap');
+let rszTimer;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = Math.round(wrap.clientWidth  * dpr);
+  H = Math.round(wrap.clientHeight * dpr);
+  canvas.width        = W;
+  canvas.height       = H;
+  canvas.style.width  = wrap.clientWidth  + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+  gl.viewport(0, 0, W, H);
+  rebuildStrokes();
+  if (!cfg.playing) drawFrame();
+}
+
+window.addEventListener('resize', () => { clearTimeout(rszTimer); rszTimer = setTimeout(resize, 120); });
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+const btnPlay = document.getElementById('btn-play');
+btnPlay.addEventListener('click', () => {
+  if (cfg.playing) {
+    pause();
+    btnPlay.textContent = '▶';
+    btnPlay.classList.remove('on');
+  } else {
+    play();
+    btnPlay.textContent = '⏸';
+    btnPlay.classList.add('on');
+  }
+});
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  drawFrame();  // ensure latest frame is in buffer before capture
+  const a = document.createElement('a');
+  a.download = 'painted_' + Date.now() + '.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+// Sliders that require a full stroke rebuild (shape/count changes)
+function bindRebuild(id, key, dispId) {
+  const el = document.getElementById(id);
+  document.getElementById(dispId).textContent = el.value;
+  el.addEventListener('input', () => {
+    cfg[key] = Number(el.value);
+    document.getElementById(dispId).textContent = el.value;
+    rebuildStrokes();
+    if (!cfg.playing) drawFrame();
+  });
+}
+
+// Sliders that only affect rendering uniforms or motion — no rebuild needed
+function bindLive(id, key, dispId) {
+  const el = document.getElementById(id);
+  document.getElementById(dispId).textContent = el.value;
+  el.addEventListener('input', () => {
+    cfg[key] = Number(el.value);
+    document.getElementById(dispId).textContent = el.value;
+    if (!cfg.playing) drawFrame();
+  });
+}
+
+function bindColor(id, key) {
+  document.getElementById(id).addEventListener('input', e => {
+    cfg[key] = e.target.value;
+    if (!cfg.playing) drawFrame();
+  });
+}
+
+bindRebuild('sl-frequency',  'frequency',  'vd-frequency');
+bindLive(   'sl-intensity',  'intensity',  'vd-intensity');
+bindRebuild('sl-length',     'length',     'vd-length');
+bindRebuild('sl-smear',      'smear',      'vd-smear');
+bindRebuild('sl-soft',       'soft',       'vd-soft');
+bindRebuild('sl-turbulence', 'turbulence', 'vd-turbulence');
+bindRebuild('sl-seed',       'seed',       'vd-seed');
+bindLive('sl-speed', 'speed', 'vd-speed');
+bindColor('col-ink',   'ink');
+bindColor('col-paper', 'paper');
+
+
+bindLive('sl-tone-variance', 'toneVariance', 'vd-tone-variance');
+bindLive('sl-edge-rough',    'edgeRough',    'vd-edge-rough');
+bindLive('sl-grain',       'grainAmt',   'vd-grain');
+bindLive('sl-grain-speed', 'grainSpeed', 'vd-grain-speed');
+
+document.getElementById('btn-grain').addEventListener('click', () => {
+  cfg.grain = !cfg.grain;
+  const btn = document.getElementById('btn-grain');
+  btn.textContent = cfg.grain ? 'On' : 'Off';
+  btn.classList.toggle('on', cfg.grain);
+  if (!cfg.playing) drawFrame();
+});
+
+// ─── Angle picker ─────────────────────────────────────────────────────────────
+const angPick = document.getElementById('angle-pick');
+const angLine = document.getElementById('ang-line');
+const angDot  = document.getElementById('ang-dot');
+const angDisp = document.getElementById('vd-angle');
+const PCX = 22, PCY = 22, PR = 17;
+
+function applyAngle(rad) {
+  cfg.angle = rad;
+  const ex = (PCX + Math.cos(rad) * PR).toFixed(2);
+  const ey = (PCY + Math.sin(rad) * PR).toFixed(2);
+  angLine.setAttribute('x2', ex);
+  angLine.setAttribute('y2', ey);
+  angDot.setAttribute('cx', ex);
+  angDot.setAttribute('cy', ey);
+  angDisp.textContent = Math.round(((rad * 180 / Math.PI) % 360 + 360) % 360) + '°';
+  // Recompute flow geometry so period/lane extents match the new angle.
+  // No stroke rebuild needed — cx/cy are derived live.
+  computeFlowGeometry();
+  if (!cfg.playing) drawFrame();
+}
+
+function angFromPtr(e) {
+  const r  = angPick.getBoundingClientRect();
+  const cx = r.left + r.width  / 2;
+  const cy = r.top  + r.height / 2;
+  const s  = e.touches ? e.touches[0] : e;
+  return Math.atan2(s.clientY - cy, s.clientX - cx);
+}
+
+let picking = false;
+angPick.addEventListener('mousedown',  e => { picking = true;  applyAngle(angFromPtr(e)); });
+window .addEventListener('mousemove',  e => { if (picking) applyAngle(angFromPtr(e)); });
+window .addEventListener('mouseup',    () => { picking = false; });
+angPick.addEventListener('touchstart', e => { e.preventDefault(); picking = true; applyAngle(angFromPtr(e)); }, { passive: false });
+window .addEventListener('touchmove',  e => { if (picking) applyAngle(angFromPtr(e)); });
+window .addEventListener('touchend',   () => { picking = false; });
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+applyAngle(Math.PI / 4);
+resize();
+play();
+</script>
+</body>
+</html>

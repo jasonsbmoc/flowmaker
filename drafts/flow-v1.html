@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Texture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f0f;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+    }
+
+    #sketch { flex: 1; overflow: hidden; display: flex; }
+    #sketch canvas { display: block; }
+
+    #bar {
+      height: 56px;
+      background: #111;
+      border-top: 1px solid #202020;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      flex-shrink: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    #bar::-webkit-scrollbar { display: none; }
+
+    .sep { width: 1px; height: 26px; background: #252525; flex-shrink: 0; }
+    .ctrl { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .lbl {
+      font-size: 9px; font-weight: 500; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #555; white-space: nowrap;
+    }
+    .vdisp { font-size: 10px; color: #444; font-family: monospace; min-width: 26px; }
+
+    .abtn {
+      background: none; border: 1px solid #2a2a2a; color: #bbb;
+      width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; display: flex; align-items: center; justify-content: center;
+      transition: background 0.1s, border-color 0.1s; flex-shrink: 0;
+    }
+    .abtn:hover { background: #1c1c1c; border-color: #3a3a3a; }
+    #btn-play { width: 40px; font-size: 15px; }
+    #btn-play.on { background: #1e1e1e; border-color: #444; color: #fff; }
+
+    .pills { display: flex; gap: 2px; }
+    .pill {
+      background: none; border: 1px solid #252525; color: #555;
+      padding: 4px 11px; border-radius: 20px; font-size: 10px;
+      cursor: pointer; font-family: inherit; transition: all 0.12s; white-space: nowrap;
+    }
+    .pill:hover { border-color: #383838; color: #888; }
+    .pill.on { background: #1e1e1e; border-color: #444; color: #ddd; }
+
+    select {
+      background: #161616; border: 1px solid #252525; color: #aaa;
+      padding: 5px 8px; font-size: 11px; font-family: inherit;
+      border-radius: 4px; cursor: pointer; outline: none; appearance: none;
+    }
+    select:focus { border-color: #3a3a3a; }
+
+    input[type="range"] {
+      width: 80px; appearance: none; height: 2px;
+      background: #252525; outline: none; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none; width: 11px; height: 11px; border-radius: 50%;
+      background: #777; cursor: pointer; transition: background 0.1s, transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { background: #ccc; transform: scale(1.2); }
+
+    input[type="color"] {
+      width: 26px; height: 26px; border: 1px solid #2a2a2a;
+      border-radius: 4px; padding: 1px; cursor: pointer; background: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sketch"></div>
+
+<div id="bar">
+  <div class="ctrl">
+    <button id="btn-play" class="abtn" title="Play / Pause">▶</button>
+    <button id="btn-clear" class="abtn" title="Clear canvas">✕</button>
+  </div>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <span class="lbl">Mark</span>
+    <div class="pills">
+      <button class="pill on" data-mark="blob">Bloom</button>
+      <button class="pill"    data-mark="streak">Streak</button>
+      <button class="pill"    data-mark="wave">Wave</button>
+    </div>
+  </div>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <span class="lbl">Flow</span>
+    <select id="sel-flow">
+      <option value="curved" selected>Curved</option>
+      <option value="waves">Waves</option>
+      <option value="diagonal">Diagonal</option>
+      <option value="fan">Fan</option>
+      <option value="spiral">Spiral</option>
+      <option value="turbulent">Turbulent</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <span class="lbl">Angle</span>
+    <input type="range" id="sl-angle" min="0" max="360" value="45">
+    <span class="vdisp" id="vd-angle">45°</span>
+  </div>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <span class="lbl">Speed</span>
+    <input type="range" id="sl-speed" min="1" max="10" value="3">
+    <span class="vdisp" id="vd-speed">3</span>
+  </div>
+  <div class="ctrl">
+    <span class="lbl">Weight</span>
+    <input type="range" id="sl-weight" min="1" max="10" value="5">
+    <span class="vdisp" id="vd-weight">5</span>
+  </div>
+  <div class="ctrl">
+    <span class="lbl">Fade</span>
+    <input type="range" id="sl-fade" min="1" max="10" value="5">
+    <span class="vdisp" id="vd-fade">5</span>
+  </div>
+  <div class="sep"></div>
+  <div class="ctrl">
+    <span class="lbl">Ink</span>
+    <input type="color" id="col-fg" value="#5a7a35">
+    <span class="lbl" style="margin-left:4px">Paper</span>
+    <input type="color" id="col-bg" value="#f0ece4">
+  </div>
+  <div class="sep"></div>
+  <button id="btn-export" class="abtn" title="Export PNG" style="font-size:16px">↓</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/p5@2/lib/p5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/p5.brush"></script>
+<script>
+const BAR_H = 56;
+
+const cfg = {
+  playing: false,
+  mark:    'blob',
+  flow:    'curved',
+  angle:   45,
+  speed:   3,
+  weight:  5,
+  fade:    5,   // 1 = fast dissolve, 10 = long linger
+  fg:      '#5a7a35',
+  bg:      '#f0ece4',
+};
+
+let needsClear    = false;
+let activeStrokes = [];
+let spawnTimer    = 0;
+
+// ─── Flow field sampler ────────────────────────────────────────────────────────
+// Returns angle in DEGREES at canvas position (x, y).
+// Mirrors the brush field definitions exactly.
+
+function getFieldAngle(x, y) {
+  const nx = x / width;
+  const ny = y / height;
+  const A  = cfg.angle;
+
+  switch (cfg.flow) {
+    case 'diagonal':
+      return A;
+
+    case 'curved':
+      return (Math.sin(nx * Math.PI * 3) * 58
+            + Math.cos(ny * Math.PI * 2) * 36
+            + A);
+
+    case 'waves':
+      return (Math.sin(nx * Math.PI * 4) * 28
+            + Math.sin(ny * Math.PI * 3) * 14
+            + A);
+
+    case 'fan': {
+      const dx = nx - 0.5, dy = ny - 0.5;
+      return (Math.atan2(dy, dx) * 180 / Math.PI + A + 180);
+    }
+
+    case 'spiral': {
+      const dx = nx - 0.5, dy = ny - 0.5;
+      const base = Math.atan2(dy, dx) * 180 / Math.PI;
+      const d    = Math.sqrt(dx * dx + dy * dy) * 2;
+      return base + d * 260 + A;
+    }
+
+    case 'turbulent':
+      return noise(nx * 4, ny * 4) * 360;
+
+    default:
+      return A;
+  }
+}
+
+// ─── FlowStroke particle ───────────────────────────────────────────────────────
+// Each particle travels along the flow field.
+// It draws one small mark per step using brush.line() (Streak/Wave)
+// or one watercolor blob every N steps (Bloom).
+// brush.flowLine() is intentionally NOT used here — that function
+// internally curves along the field, which compounds with the particle's
+// own movement and creates spirograph artifacts.
+
+class FlowStroke {
+  constructor() {
+    // Spawn from edge 40% of the time, random interior otherwise
+    if (random() < 0.4) {
+      const side = floor(random(4));
+      if      (side === 0) { this.x = random(width); this.y = 0; }
+      else if (side === 1) { this.x = width;          this.y = random(height); }
+      else if (side === 2) { this.x = random(width); this.y = height; }
+      else                 { this.x = 0;              this.y = random(height); }
+    } else {
+      this.x = random(width);
+      this.y = random(height);
+    }
+
+    this.mark    = cfg.mark;
+    this.fg      = cfg.fg;
+    this.wt      = cfg.weight;
+    this.opacity = random(45, 100);
+    this.age     = 0;
+    this.dead    = false;
+
+    if (this.mark === 'blob') {
+      // Blobs: large steps so each circle is well-separated; few per stroke
+      this.stepSize = map(cfg.speed, 1, 10, 40, 160);
+      this.maxLife  = floor(random(4, 10));
+      this.radius   = random(0.6, 1.8) * this.wt * 20;
+      this.bleed    = random(0.68, 0.90);
+
+    } else if (this.mark === 'streak') {
+      // Streak: tight steps forming a continuous dry-brush sweep
+      this.stepSize = map(cfg.speed, 1, 10, 6, 32);
+      this.maxLife  = floor(random(40, 100));
+      this.btype    = random(['charcoal', '2B', 'HB']);
+      this.lineW    = this.wt * random(2.5, 5.5);
+
+    } else {
+      // Wave: tight steps, soft wet-brush sweep
+      this.stepSize = map(cfg.speed, 1, 10, 6, 32);
+      this.maxLife  = floor(random(30, 80));
+      this.btype    = random(['marker', 'marker2']);
+      this.lineW    = this.wt * random(4.0, 8.0);
+    }
+  }
+
+  step() {
+    if (this.dead) return;
+
+    const angDeg = getFieldAngle(this.x, this.y);
+    const angRad = angDeg * Math.PI / 180;
+    const nx = this.x + Math.cos(angRad) * this.stepSize;
+    const ny = this.y + Math.sin(angRad) * this.stepSize;
+
+    if (this.mark === 'blob') {
+      // One watercolor circle per step, at current position
+      brush.noStroke();
+      brush.noWash();
+      brush.fill(this.fg, this.opacity);
+      brush.fillBleed(this.bleed);
+      brush.fillTexture(0.05, 0.22);
+      brush.circle(this.x, this.y, this.radius);
+
+    } else {
+      // Streak or Wave: straight brush segment from here to next position.
+      // brush.line() draws a short brushstroke between two points;
+      // the particle's movement through the field creates the curve.
+      brush.noFill();
+      brush.noWash();
+      brush.set(this.btype, this.fg, this.lineW);
+      brush.line(this.x, this.y, nx, ny);
+    }
+
+    this.x = nx;
+    this.y = ny;
+    this.age++;
+
+    if (this.age >= this.maxLife
+        || this.x < -120 || this.x > width  + 120
+        || this.y < -120 || this.y > height + 120) {
+      this.dead = true;
+    }
+  }
+}
+
+// ─── Sketch ───────────────────────────────────────────────────────────────────
+
+function setup() {
+  let cnv = createCanvas(windowWidth, windowHeight - BAR_H, WEBGL);
+  cnv.parent('sketch');
+  pixelDensity(1);
+  brush.load();
+  brush.scaleBrushes(min(width, height) / 200);
+  registerFields();
+  needsClear = true;
+}
+
+function draw() {
+  if (needsClear) {
+    let c = color(cfg.bg);
+    background(red(c), green(c), blue(c));
+    needsClear    = false;
+    activeStrokes = [];
+    spawnTimer    = 0;
+    return;
+  }
+
+  if (!cfg.playing) return;
+
+  // Shift WEBGL origin from canvas-center to top-left
+  translate(-width / 2, -height / 2);
+
+  // ── Gentle fade ─────────────────────────────────────────────────────────────
+  // Draw a semi-transparent paper-color rect to dissolve old marks.
+  // blendMode(BLEND) ensures standard alpha compositing — p5.brush can leave
+  // WebGL in a non-default blend mode which causes a gray cast without this.
+  // fade=1 (fast) → alpha≈18; fade=10 (long linger) → alpha≈1
+  const fadeAlpha = Math.round(map(cfg.fade, 1, 10, 18, 1));
+  let bc = color(cfg.bg);
+  blendMode(BLEND);
+  noStroke();
+  fill(red(bc), green(bc), blue(bc), fadeAlpha);
+  rect(0, 0, width, height);
+
+  // ── Brush marks ─────────────────────────────────────────────────────────────
+  brush.clip([0, 0, width, height]);
+
+  // Spawn rate: speed 1 → new stroke every ~110 frames; speed 10 → every ~8 frames
+  const spawnInterval = Math.round(map(cfg.speed, 1, 10, 110, 8));
+  // Concurrent strokes: 1 at low speed, up to 3 at high speed
+  const maxConcurrent = 1 + Math.floor(cfg.speed / 5);
+
+  spawnTimer++;
+  if (spawnTimer >= spawnInterval && activeStrokes.length < maxConcurrent) {
+    activeStrokes.push(new FlowStroke());
+    spawnTimer = 0;
+  }
+
+  for (const s of activeStrokes) s.step();
+  activeStrokes = activeStrokes.filter(s => !s.dead);
+
+  brush.noClip();
+}
+
+// ─── Flow fields (for brush.flowLine if ever called, and for brush internals) ─
+
+function registerFields() {
+  brush.addField('flow_diagonal', (t, field) => {
+    for (let row of field) row.fill(cfg.angle);
+    return field;
+  });
+
+  brush.addField('flow_curved', (t, field) => {
+    const h = field.length, w = field[0].length;
+    for (let i = 0; i < h; i++)
+      for (let j = 0; j < w; j++) {
+        const nx = (j / w) * Math.PI * 3;
+        const ny = (i / h) * Math.PI * 2;
+        field[i][j] = (Math.sin(nx) * 58 + Math.cos(ny) * 36 + cfg.angle) % 360;
+      }
+    return field;
+  });
+
+  brush.addField('flow_waves', (t, field) => {
+    const h = field.length, w = field[0].length;
+    for (let i = 0; i < h; i++)
+      for (let j = 0; j < w; j++) {
+        const nx = (j / w) * Math.PI * 4;
+        const ny = (i / h) * Math.PI * 2;
+        field[i][j] = (Math.sin(nx) * 28 + Math.sin(ny * 1.5) * 14 + cfg.angle) % 360;
+      }
+    return field;
+  });
+
+  brush.addField('flow_fan', (t, field) => {
+    const h = field.length, w = field[0].length;
+    for (let i = 0; i < h; i++)
+      for (let j = 0; j < w; j++) {
+        const nx = j / w - 0.5, ny = i / h - 0.5;
+        field[i][j] = (Math.atan2(ny, nx) * 180 / Math.PI + cfg.angle + 180) % 360;
+      }
+    return field;
+  });
+
+  brush.addField('flow_spiral', (t, field) => {
+    const h = field.length, w = field[0].length;
+    for (let i = 0; i < h; i++)
+      for (let j = 0; j < w; j++) {
+        const nx = j / w - 0.5, ny = i / h - 0.5;
+        const a = Math.atan2(ny, nx) * 180 / Math.PI;
+        const d = Math.sqrt(nx * nx + ny * ny) * 2;
+        field[i][j] = (a + d * 260 + cfg.angle) % 360;
+      }
+    return field;
+  });
+
+  brush.addField('flow_turbulent', (t, field) => {
+    const h = field.length, w = field[0].length;
+    for (let i = 0; i < h; i++)
+      for (let j = 0; j < w; j++)
+        field[i][j] = noise(j / w * 4, i / h * 4) * 360;
+    return field;
+  });
+
+  brush.field('flow_' + cfg.flow);
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  cfg.playing = !cfg.playing;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = cfg.playing ? '⏸' : '▶';
+  btn.classList.toggle('on', cfg.playing);
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  cfg.playing = false;
+  const pb = document.getElementById('btn-play');
+  pb.textContent = '▶';
+  pb.classList.remove('on');
+  needsClear = true;
+});
+
+document.querySelectorAll('.pill[data-mark]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    cfg.mark = btn.dataset.mark;
+    document.querySelectorAll('.pill[data-mark]').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    activeStrokes = []; // flush strokes so new type takes effect immediately
+  });
+});
+
+document.getElementById('sel-flow').addEventListener('change', e => {
+  cfg.flow = e.target.value;
+  brush.field('flow_' + cfg.flow);
+  brush.refreshField(0);
+});
+
+document.getElementById('sl-angle').addEventListener('input', e => {
+  cfg.angle = Number(e.target.value);
+  document.getElementById('vd-angle').textContent = cfg.angle + '°';
+  brush.refreshField(0);
+});
+
+document.getElementById('sl-speed').addEventListener('input', e => {
+  cfg.speed = Number(e.target.value);
+  document.getElementById('vd-speed').textContent = cfg.speed;
+});
+
+document.getElementById('sl-weight').addEventListener('input', e => {
+  cfg.weight = Number(e.target.value);
+  document.getElementById('vd-weight').textContent = cfg.weight;
+});
+
+document.getElementById('sl-fade').addEventListener('input', e => {
+  cfg.fade = Number(e.target.value);
+  document.getElementById('vd-fade').textContent = cfg.fade;
+});
+
+document.getElementById('col-fg').addEventListener('input', e => { cfg.fg = e.target.value; });
+document.getElementById('col-bg').addEventListener('input', e => { cfg.bg = e.target.value; });
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  saveCanvas('flow_' + Date.now(), 'png');
+});
+</script>
+</body>
+</html>
