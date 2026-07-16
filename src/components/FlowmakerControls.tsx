@@ -5,6 +5,7 @@ import { cfg } from '../engine/config';
 import { drawFrame, rebuildStrokes } from '../engine/engine';
 import { AnglePicker } from './AnglePicker';
 import { ColorRow } from './ColorRow';
+import { GridControls } from './GridControls';
 
 type NumKey = {
   [K in keyof Config]: Config[K] extends number ? K : never;
@@ -57,6 +58,8 @@ export function FlowmakerControls() {
         <AnglePicker />
       </Folder>
 
+      <GridControls />
+
       <Folder title="Stroke" defaultOpen>
         <Slider label="Frequency" value={frequency} onChange={setFrequency} min={1} max={10} step={1} />
         <Slider label="Intensity" value={intensity} onChange={setIntensity} min={1} max={10} step={1} />
@@ -76,13 +79,8 @@ export function FlowmakerControls() {
         <Slider label="Seed" value={seed} onChange={setSeed} min={0} max={999} step={1} />
       </Folder>
 
-      <Folder
-        title="Grain"
-        defaultOpen={false}
-        toolbar={
-          <Toggle label="" checked={grain} onChange={setGrain} />
-        }
-      >
+      <Folder title="Grain" defaultOpen={false}>
+        <Toggle label="Enabled" checked={grain} onChange={setGrain} />
         <Slider label="Amount" value={grainAmt} onChange={setGrainAmt} min={1} max={10} step={1} />
         <Slider label="Grain Speed" value={grainSpeed} onChange={setGrainSpeed} min={1} max={10} step={1} />
       </Folder>

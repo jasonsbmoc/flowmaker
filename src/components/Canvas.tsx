@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { dispose, init, resize } from '../engine/engine';
+import { GridLayer } from './GridLayer';
 
 export function Canvas() {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -29,6 +30,7 @@ export function Canvas() {
   return (
     <div id="canvas-wrap" ref={wrapRef}>
       <canvas id="canvas" ref={canvasRef} />
+      <GridLayer wrapRef={wrapRef} />
     </div>
   );
 }

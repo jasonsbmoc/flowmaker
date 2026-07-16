@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Coloris from '@melloware/coloris';
 import { cfg } from '../engine/config';
 import { drawFrame } from '../engine/engine';
+import { drawGridLayer } from '../engine/gridLayer';
 
 interface ColorRowProps {
   label: string;
@@ -24,6 +25,8 @@ export function ColorRow({ label, cfgKey }: ColorRowProps) {
       setHex(v);
       cfg[cfgKey] = v;
       if (!cfg.playing) drawFrame();
+      // Grid squares track the paper color.
+      if (cfgKey === 'paper') drawGridLayer();
     };
     el.addEventListener('input', onInput);
     return () => el.removeEventListener('input', onInput);

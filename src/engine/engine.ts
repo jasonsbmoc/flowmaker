@@ -223,6 +223,12 @@ let flowAxisLen = 0,
 let strokes: Stroke[] = [];
 let rafId: number | null = null;
 
+// Optional 2D overlay (grid layer) composited into exports.
+let overlayCanvas: HTMLCanvasElement | null = null;
+export function setOverlay(c: HTMLCanvasElement | null) {
+  overlayCanvas = c;
+}
+
 // ─── Geometry ─────────────────────────────────────────────────────────────────
 function computeParams() {
   const sc = Math.min(W, H) / 900;
@@ -501,9 +507,22 @@ export function setAngle(rad: number) {
 // JPEG @ q=0.92 — canvas has no alpha, and painterly output compresses well.
 export function exportImage() {
   drawFrame();
+  let href: string;
+  if (overlayCanvas) {
+    // Composite the grid overlay on top of the painted flow.
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const octx = out.getContext('2d')!;
+    octx.drawImage(canvas, 0, 0);
+    octx.drawImage(overlayCanvas, 0, 0, out.width, out.height);
+    href = out.toDataURL('image/jpeg', 0.92);
+  } else {
+    href = canvas.toDataURL('image/jpeg', 0.92);
+  }
   const a = document.createElement('a');
   a.download = 'painted_' + Date.now() + '.jpg';
-  a.href = canvas.toDataURL('image/jpeg', 0.92);
+  a.href = href;
   a.click();
 }
 
