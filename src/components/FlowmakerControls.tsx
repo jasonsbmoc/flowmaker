@@ -42,6 +42,10 @@ export function FlowmakerControls() {
   const [edgeRough, setEdgeRough] = useNumCfg('edgeRough');
   const [turbulence, setTurbulence] = useNumCfg('turbulence', true);
   const [speed, setSpeed] = useNumCfg('speed');
+  const [flow, setFlow] = useNumCfg('flow');
+  const [flowScale, setFlowScale] = useNumCfg('flowScale');
+  const [flowDrift, setFlowDrift] = useNumCfg('flowDrift');
+  const [detail, setDetail] = useNumCfg('detail');
   const [seed, setSeed] = useNumCfg('seed', true);
   const [grain, setGrain] = useBoolCfg('grain');
   const [grainAmt, setGrainAmt] = useNumCfg('grainAmt');
@@ -71,8 +75,12 @@ export function FlowmakerControls() {
         <Slider label="Turbulence" value={turbulence} onChange={setTurbulence} min={0} max={10} step={1} />
       </Folder>
 
-      <Folder title="Motion" defaultOpen={false}>
+      <Folder title="Motion" defaultOpen>
         <Slider label="Speed" value={speed} onChange={setSpeed} min={1} max={10} step={1} />
+        <Slider label="Flow" value={flow} onChange={setFlow} min={0} max={10} step={1} />
+        <Slider label="Flow Scale" value={flowScale} onChange={setFlowScale} min={1} max={10} step={1} />
+        <Slider label="Flow Drift" value={flowDrift} onChange={setFlowDrift} min={1} max={10} step={1} />
+        <Slider label="Detail" value={detail} onChange={setDetail} min={1} max={10} step={1} />
       </Folder>
 
       <Folder title="Random" defaultOpen={false}>

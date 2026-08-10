@@ -7,6 +7,10 @@ export interface Config {
   soft: number;
   angle: number;
   turbulence: number;
+  flow: number;
+  flowScale: number;
+  flowDrift: number;
+  detail: number;
   frequency: number;
   intensity: number;
   speed: number;
@@ -24,14 +28,18 @@ export const cfg: Config = {
   paper: '#F7F4ED',
   length: 5,
   smear: 7,
-  soft: 6,
+  soft: 7,
   angle: Math.PI / 4,
-  turbulence: 3,
-  frequency: 5,
+  turbulence: 5,
+  flow: 4,
+  flowScale: 5,
+  flowDrift: 4,
+  detail: 6,
+  frequency: 8,
   intensity: 7,
-  speed: 3,
+  speed: 4,
   seed: Math.floor(Math.random() * 1000),
-  toneVariance: 1,
+  toneVariance: 3,
   edgeRough: 6,
   grain: true,
   grainAmt: 2,

@@ -1,4 +1,12 @@
 import { cfg } from './config';
+import {
+  seedTrail,
+  advanceTrail,
+  walkTrail,
+  inflowHead,
+  type FlowParams,
+  type TrailState,
+} from './flow';
 
 // ─── PRNG (mulberry32) ────────────────────────────────────────────────────────
 function mkRng(seed: number): () => number {
@@ -174,6 +182,15 @@ let ibo!: WebGLBuffer;
 let grainVbo!: WebGLBuffer;
 
 const MAX_BLOBS = 8000;
+// Fractal flow: octaves of noise summed for multi-scale (less cyclic) motion,
+// and a slow domain drift so the field streams rather than oscillating in place.
+const FLOW_OCTAVES = 4;
+const FLOW_DRIFT = 0.6; // noise-units of domain translation per unit flowTime
+const BLOB_SPACING_FACTOR = 0.65; // trail-point spacing as a fraction of blobR
+const SPAWN_FADE_FRAMES = 24; // ~0.4s alpha fade-in after an in-flight respawn
+// Per-blob quad corner UVs (constant); corner offsets CX/CY are per-stroke.
+const CU = [0, 1, 1, 0];
+const CV = [0, 0, 1, 1];
 const F_PER_V = 8;
 const V_PER_Q = 4;
 const STRIDE_BYTES = F_PER_V * 4;
@@ -213,15 +230,29 @@ let blobR = 0,
   softness = 0,
   turbAmt = 0,
   strokeCount = 0;
-let flowAxisLen = 0,
-  perpAxisLen = 0,
-  flowPeriod = 0,
-  flowMargin = 0,
-  centerAlong = 0,
-  centerPerp = 0;
+let nSteps = 0, // blobs per stroke (trail capacity)
+  spacing = 0, // arc-length spacing between trail points (px)
+  flowMargin = 0; // off-screen spawn/cull margin (px)
+let flowTime = 0;
+
+const flowParams: FlowParams = {
+  windX: 0,
+  windY: 0,
+  invScale: 0,
+  strength: 0,
+  driftX: 0,
+  driftY: 0,
+  octaves: FLOW_OCTAVES,
+  gain: 0,
+};
 
 let strokes: Stroke[] = [];
+let spawnRng: () => number = () => 0.5;
 let rafId: number | null = null;
+// Only the very first build scatters strokes across the screen for instant
+// coverage. Later rebuilds (slider/resize) keep existing strokes in place and
+// bring any new ones in from the upwind edge, so nothing pops in mid-screen.
+let firstBuild = true;
 
 // Optional 2D overlay (grid layer) composited into exports.
 let overlayCanvas: HTMLCanvasElement | null = null;
@@ -242,60 +273,48 @@ function computeParams() {
   turbAmt = norm(cfg.turbulence, 0, 10);
   const tf = norm(cfg.frequency, 1, 10);
   strokeCount = Math.round(lerp(3, 90, tf * tf));
-  computeFlowGeometry();
+
+  spacing = blobR * BLOB_SPACING_FACTOR;
+  nSteps = clamp(Math.round((halfLen * 2) / spacing), 2, 60) + 1;
+  // A full trail (nSteps*spacing) plus a blob radius must sit off-screen.
+  flowMargin = nSteps * spacing + blobLong;
 }
 
-function computeFlowGeometry() {
-  const ca = Math.abs(Math.cos(cfg.angle));
-  const sa = Math.abs(Math.sin(cfg.angle));
-  flowAxisLen = W * ca + H * sa;
-  perpAxisLen = W * sa + H * ca;
-  centerAlong = (W / 2) * Math.cos(cfg.angle) + (H / 2) * Math.sin(cfg.angle);
-  centerPerp = (-W / 2) * Math.sin(cfg.angle) + (H / 2) * Math.cos(cfg.angle);
-  flowMargin = (halfLen + blobR) * 1.6;
-  flowPeriod = flowAxisLen + 2 * flowMargin;
+// Refresh the velocity-field params from config + flowTime. Cheap; called each
+// frame so the non-rebuild sliders (Flow, Flow Scale, Detail, Speed) take effect.
+function updateFlowParams() {
+  const ca = Math.cos(cfg.angle);
+  const sa = Math.sin(cfg.angle);
+  const windSpeed = Math.pow(10, lerp(-0.52, 0.92, norm(cfg.speed, 1, 10)));
+  flowParams.windX = ca * windSpeed;
+  flowParams.windY = sa * windSpeed;
+  flowParams.invScale = 1 / lerp(120, 1400, norm(cfg.flowScale, 1, 10));
+  // Curl velocity scales with wind so Flow reads as "swirliness vs the current".
+  flowParams.strength = norm(cfg.flow, 0, 10) * windSpeed * 1.5;
+  flowParams.gain = lerp(0.0, 0.6, norm(cfg.detail, 1, 10));
+  // Domain drift: translate the field along the wind so it streams over time.
+  flowParams.driftX = ca * FLOW_DRIFT * flowTime;
+  flowParams.driftY = sa * FLOW_DRIFT * flowTime;
 }
 
-interface BlobOffset {
-  along: number;
-  perp: number;
-  localAngleDelta: number;
-  alphaFactor: number;
-}
-
-function computeBlobOffsets(warpPhase: number): BlobOffset[] {
-  const stepDist = blobR * 0.65;
-  const nSteps = clamp(Math.round((halfLen * 2) / stepDist), 2, 60);
-  const offsets: BlobOffset[] = [];
-
-  for (let i = 0; i <= nSteps; i++) {
-    const t = i / nSteps;
-    const along = (t - 0.5) * halfLen * 2;
-    const envelope = Math.sin(t * Math.PI);
-    const perp =
-      Math.sin(t * Math.PI * 3 + warpPhase) * blobR * turbAmt * 6.0 * envelope;
-
-    let localAngleDelta = 0;
-    if (turbAmt > 0.01) {
-      const dt = 1 / nSteps;
-      const env2 = Math.sin((t + dt) * Math.PI);
-      const p2 =
-        Math.sin((t + dt) * Math.PI * 3 + warpPhase) *
-        blobR *
-        turbAmt *
-        6.0 *
-        env2;
-      localAngleDelta = Math.atan2(-(p2 - perp), halfLen * 2 * dt) * 0.55;
-    }
-
-    offsets.push({
-      along,
-      perp,
-      localAngleDelta,
-      alphaFactor: Math.pow(envelope, 0.4),
-    });
+// Place a stroke at a random point in screen+margin and pre-seed its trail.
+// initial=true scatters the head across the whole area so the screen is full
+// immediately on (re)build. initial=false enters just past the upwind edge so
+// the body stays off-screen and drifts on promptly (instead of materializing
+// mid-screen, and instead of starting a full trail-length away which left the
+// screen starved while strokes transited back). blobLong (one head-blob long
+// axis) is just enough for the head to sit off-screen; the cull trigger stays
+// at flowMargin so an exiting stroke's whole body clears before it recycles.
+function spawnStroke(s: Stroke, initial: boolean) {
+  if (initial) {
+    s.headX = -flowMargin + spawnRng() * (W + 2 * flowMargin);
+    s.headY = -flowMargin + spawnRng() * (H + 2 * flowMargin);
+  } else {
+    const head = inflowHead(W, H, cfg.angle, blobLong, spawnRng());
+    s.headX = head.x;
+    s.headY = head.y;
   }
-  return offsets;
+  seedTrail(s.headX, s.headY, flowTime, flowParams, spacing, nSteps, s.trail);
 }
 
 // ─── Stroke ───────────────────────────────────────────────────────────────────
@@ -303,45 +322,48 @@ class Stroke {
   sVar: number;
   aVar: number;
   warpPhase: number;
-  blobs: BlobOffset[];
-  laneParam: number;
   toneParam: number;
-  progress: number;
+  headX = 0;
+  headY = 0;
+  age = 999; // frames since spawn; large = fully faded in
+  trail: TrailState = { pts: [], carry: 0 };
 
-  constructor(rng: () => number, initial: boolean) {
+  constructor(rng: () => number) {
     this.sVar = lerp(0.7, 1.3, rng());
     this.aVar = lerp(0.45, 1.0, rng());
     this.warpPhase = rng() * Math.PI * 2;
-    this.blobs = computeBlobOffsets(this.warpPhase);
-    this.laneParam = rng();
     this.toneParam = rng();
-    this.progress = initial ? rng() * flowPeriod : 0;
   }
 
-  get cx(): number {
-    const along = centerAlong - flowAxisLen / 2 - flowMargin + this.progress;
-    const lane = centerPerp + (this.laneParam - 0.5) * perpAxisLen * 1.05;
-    return along * Math.cos(cfg.angle) - lane * Math.sin(cfg.angle);
-  }
-  get cy(): number {
-    const along = centerAlong - flowAxisLen / 2 - flowMargin + this.progress;
-    const lane = centerPerp + (this.laneParam - 0.5) * perpAxisLen * 1.05;
-    return along * Math.sin(cfg.angle) + lane * Math.cos(cfg.angle);
-  }
-
-  advance(px: number) {
-    this.progress = (this.progress + px) % flowPeriod;
+  advance() {
+    const h = advanceTrail(
+      this.trail,
+      this.headX,
+      this.headY,
+      flowTime,
+      flowParams,
+      spacing,
+      nSteps,
+    );
+    this.headX = h.x;
+    this.headY = h.y;
+    this.age++;
+    if (
+      this.headX < -flowMargin ||
+      this.headX > W + flowMargin ||
+      this.headY < -flowMargin ||
+      this.headY > H + flowMargin
+    ) {
+      spawnStroke(this, false);
+      this.age = 0;
+    }
   }
 
   writeQuads(blobIndex: number, palette: [number, number, number][]): number {
-    const ca = Math.cos(cfg.angle);
-    const sa = Math.sin(cfg.angle);
     const rx = blobLong * this.sVar;
     const ry = blobR * this.sVar;
     const ti = norm(cfg.intensity, 1, 10);
     const alph = lerp(0.06, 0.95, ti * ti) * this.aVar;
-    const scx = this.cx;
-    const scy = this.cy;
 
     const pidx = Math.min(
       palette.length - 1,
@@ -352,22 +374,31 @@ class Stroke {
       gf = cg / 255,
       bf = cb / 255;
 
+    const places = walkTrail(this.headX, this.headY, this.trail.pts, nSteps, spacing);
+    const fade = Math.min(1, this.age / SPAWN_FADE_FRAMES);
+    const CX = [-rx, rx, rx, -rx];
+    const CY = [-ry, -ry, ry, ry];
+    const n = places.length;
     let qi = 0;
-    for (const b of this.blobs) {
-      if (b.alphaFactor < 0.015) continue;
+    for (let pi = 0; pi < n; pi++) {
+      const pl = places[pi];
+      if (pl.env < 0.015) continue;
       if (blobIndex + qi >= MAX_BLOBS) break;
 
-      const wx = scx + ca * b.along - sa * b.perp;
-      const wy = scy + sa * b.along + ca * b.perp;
-      const wa = cfg.angle + b.localAngleDelta;
-      const a = alph * b.alphaFactor;
-      const cw = Math.cos(wa),
-        sw = Math.sin(wa);
-
-      const CX = [-rx, rx, rx, -rx];
-      const CY = [-ry, -ry, ry, ry];
-      const CU = [0, 1, 1, 0];
-      const CV = [0, 0, 1, 1];
+      // Perpendicular path wiggle (Turbulence): smooth sinusoid along the body
+      // offset perpendicular (-ty, tx) to the local tangent.
+      const tparam = pi / (n - 1);
+      const wig =
+        Math.sin(tparam * Math.PI * 3 + this.warpPhase) *
+        blobR *
+        turbAmt *
+        2.0 *
+        pl.env;
+      const wx = pl.x + -pl.ty * wig;
+      const wy = pl.y + pl.tx * wig;
+      const cw = pl.tx; // tangent is already unit length
+      const sw = pl.ty;
+      const a = alph * Math.pow(pl.env, 0.4) * fade;
 
       const base = (blobIndex + qi) * V_PER_Q * F_PER_V;
       for (let c = 0; c < 4; c++) {
@@ -390,10 +421,33 @@ class Stroke {
 // ─── Stroke pool ──────────────────────────────────────────────────────────────
 export function rebuildStrokes() {
   computeParams();
+  updateFlowParams();
   const rng = mkRng(cfg.seed * 9301 + 49297);
-  strokes = [];
-  for (let i = 0; i < strokeCount; i++) {
-    strokes.push(new Stroke(rng, true));
+
+  if (firstBuild || strokes.length === 0) {
+    // First render: scatter across the whole area for instant coverage.
+    spawnRng = mkRng(cfg.seed * 2654435761 + 1013904223);
+    strokes = [];
+    for (let i = 0; i < strokeCount; i++) {
+      const s = new Stroke(rng);
+      spawnStroke(s, true);
+      strokes.push(s);
+    }
+    firstBuild = false;
+    return;
+  }
+
+  // Later rebuilds: keep existing strokes where they are (re-seed their trails
+  // with the new geometry, head unchanged) so nothing teleports; trim extras
+  // and bring any new strokes in from the upwind edge.
+  while (strokes.length > strokeCount) strokes.pop();
+  for (const s of strokes) {
+    seedTrail(s.headX, s.headY, flowTime, flowParams, spacing, nSteps, s.trail);
+  }
+  while (strokes.length < strokeCount) {
+    const s = new Stroke(rng);
+    spawnStroke(s, false);
+    strokes.push(s);
   }
 }
 
@@ -419,6 +473,9 @@ export function drawFrame() {
   gl.uniform2f(loc.uRes, W, H);
   gl.uniform1f(loc.uSoft, softness);
   gl.uniform1f(loc.uEdgeRough, lerp(0.0, 0.55, norm(cfg.edgeRough, 0, 10)));
+
+  // Note: flowParams is refreshed in tick() before advance() (and in
+  // rebuildStrokes/setAngle for static redraws); drawFrame() doesn't read it.
 
   const palette = computeTonePalette();
   let totalBlobs = 0;
@@ -453,8 +510,9 @@ export function drawFrame() {
 
 // ─── Animation loop ───────────────────────────────────────────────────────────
 function tick() {
-  const pxPerFrame = Math.pow(10, lerp(-0.52, 0.92, norm(cfg.speed, 1, 10)));
-  for (const s of strokes) s.advance(pxPerFrame);
+  updateFlowParams();
+  for (const s of strokes) s.advance();
+  flowTime += lerp(0.0008, 0.02, norm(cfg.flowDrift, 1, 10));
   drawFrame();
   if (cfg.playing) rafId = requestAnimationFrame(tick);
 }
@@ -499,7 +557,7 @@ export function resize() {
 // ─── Angle ────────────────────────────────────────────────────────────────────
 export function setAngle(rad: number) {
   cfg.angle = rad;
-  computeFlowGeometry();
+  updateFlowParams();
   if (!cfg.playing) drawFrame();
 }
 
